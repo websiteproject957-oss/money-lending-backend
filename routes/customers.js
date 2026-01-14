@@ -1,6 +1,5 @@
 const express = require('express');
 const Customer = require('../models/Customer');
-const { v4: uuidv4 } = require('uuid');
 
 const router = express.Router();
 
