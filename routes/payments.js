@@ -22,10 +22,16 @@ router.post('/addPayment', async (req, res) => {
     const { data } = req.body;
     const paymentId = 'PAY-' + Date.now();
     
+    // Get customer_id from loan
+    const loan = await Loan.findOne({ loan_id: data.loan_id });
+    if (!loan) {
+      return res.status(404).json({ error: 'Loan not found' });
+    }
+    
     const payment = new Payment({
       payment_id: paymentId,
       loan_id: data.loan_id,
-      customer_id: data.customer_id,
+      customer_id: loan.customer_id,
       payment_date: data.payment_date,
       pay_amount: data.pay_amount,
       slip_url: data.slip_url || ''
@@ -34,11 +40,8 @@ router.post('/addPayment', async (req, res) => {
     await payment.save();
     
     // Update loan balance
-    const loan = await Loan.findOne({ loan_id: data.loan_id });
-    if (loan) {
-      loan.current_balance = Math.max(0, loan.current_balance - data.pay_amount);
-      await loan.save();
-    }
+    loan.current_balance = Math.max(0, loan.current_balance - data.pay_amount);
+    await loan.save();
     
     // Calculate and update monthly summary
     const [year, month] = data.payment_date.split('-').slice(0, 2).join('-').split('-');
