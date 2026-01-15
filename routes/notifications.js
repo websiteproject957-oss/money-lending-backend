@@ -30,17 +30,20 @@ router.post('/getNotifications', async (req, res) => {
       appointment_date: { $ne: '' }
     }).lean();
 
-    // Get all loans for these customers
+    // Get all loans for these customers (any status)
     const customerIds = customers.map(c => c.customer_id);
     const loans = await Loan.find({ 
-      customer_id: { $in: customerIds },
-      status: 'active'
+      customer_id: { $in: customerIds }
     }).lean();
 
-    // Create a map of customer_id to their active loan
+    console.log('Found customers:', customerIds);
+    console.log('Found loans:', loans.map(l => ({ customer_id: l.customer_id, interest: l.interest_rate, balance: l.current_balance })));
+
+    // Create a map of customer_id to their loan (prefer active, but take any)
     const loanMap = {};
     loans.forEach(loan => {
-      if (!loanMap[loan.customer_id]) {
+      // If no loan yet, or this one is active (prefer active)
+      if (!loanMap[loan.customer_id] || loan.status === 'active') {
         loanMap[loan.customer_id] = loan;
       }
     });
@@ -58,6 +61,7 @@ router.post('/getNotifications', async (req, res) => {
           
           // Get loan info for this customer
           const loan = loanMap[customer.customer_id];
+          console.log(`Customer ${customer.customer_id} loan:`, loan ? { balance: loan.current_balance } : 'NOT FOUND');
           
           return {
             customer_id: customer.customer_id,
@@ -67,10 +71,10 @@ router.post('/getNotifications', async (req, res) => {
             days_until: daysUntil,
             priority: priority,
             reminder_time: customer.reminder_time,
-            // Loan details
-            interest_rate: loan ? loan.interest_rate : 0,
+            // interest_rate is in Customer model, current_balance is in Loan model
+            interest_rate: customer.interest_rate || 0,
             current_balance: loan ? loan.current_balance : 0,
-            loan_amount: loan ? loan.loan_amount : 0
+            loan_amount: loan ? loan.principal : 0
           };
         }
         return null;
@@ -183,11 +187,17 @@ async function checkAndNotifyDueLoans() {
       status: 'active'
     }).lean();
 
-    if (dueLoans.length > 0) {
+    // Send individual notification for each due loan
+    for (const loan of dueLoans) {
+      const customer = await Customer.findOne({ customer_id: loan.customer_id }).lean();
+      const balanceFormatted = loan.current_balance ? loan.current_balance.toLocaleString('th-TH') : '0';
+      // interest_rate is in Customer model
+      const interestRate = customer ? customer.interest_rate : 0;
+      
       await sendPushToAllSubscribers(
         '📢 มีเงินกู้ครบกำหนด!',
-        `มี ${dueLoans.length} รายการเงินกู้ที่ครบกำหนดหรือเกินกำหนด`,
-        { type: 'due', count: dueLoans.length }
+        `👤 ${customer ? customer.name : 'ไม่ระบุ'}\n📱 ${customer ? customer.phone : '-'}\n💰 ดอกเบี้ย: ${interestRate}% | ยอด: ${balanceFormatted} บาท\n📅 วันนัด: ${customer ? customer.appointment_date : '-'}`,
+        { type: 'due', customer_id: loan.customer_id }
       );
     }
 
@@ -198,11 +208,17 @@ async function checkAndNotifyDueLoans() {
       status: 'active'
     }).lean();
 
-    if (upcomingLoans.length > 0) {
+    // Send individual notification for each upcoming loan
+    for (const loan of upcomingLoans) {
+      const customer = await Customer.findOne({ customer_id: loan.customer_id }).lean();
+      const balanceFormatted = loan.current_balance ? loan.current_balance.toLocaleString('th-TH') : '0';
+      // interest_rate is in Customer model
+      const interestRate = customer ? customer.interest_rate : 0;
+      
       await sendPushToAllSubscribers(
         '📅 เงินกู้ใกล้ครบกำหนด',
-        `มี ${upcomingLoans.length} รายการที่จะครบกำหนดในอีก 3 วัน`,
-        { type: 'upcoming', count: upcomingLoans.length }
+        `👤 ${customer ? customer.name : 'ไม่ระบุ'}\n📱 ${customer ? customer.phone : '-'}\n💰 ดอกเบี้ย: ${interestRate}% | ยอด: ${balanceFormatted} บาท\n📅 วันนัด: ${customer ? customer.appointment_date : '-'}`,
+        { type: 'upcoming', customer_id: loan.customer_id }
       );
     }
 
