@@ -1,4 +1,4 @@
-const mongoose = require('mongoose');
+﻿const mongoose = require('mongoose');
 
 const paymentSchema = new mongoose.Schema(
   {
@@ -25,6 +25,28 @@ const paymentSchema = new mongoose.Schema(
     pay_amount: {
       type: Number,
       required: true
+    },
+    // รายละเอียดการตัดยอด
+    interest_paid: {
+      type: Number,
+      default: 0
+    },
+    principal_paid: {
+      type: Number,
+      default: 0
+    },
+    // Snapshot หลังจ่าย
+    balance_after: {
+      type: Number,
+      default: 0
+    },
+    principal_after: {
+      type: Number,
+      default: 0
+    },
+    outstanding_interest_after: {
+      type: Number,
+      default: 0
     },
     slip_url: {
       type: String,
