@@ -173,3 +173,5 @@ router.post('/migrateLoans', async (req, res) => {
   }
 });
 
+
+module.exports = router;
