@@ -1,5 +1,6 @@
 ﻿const cron = require('node-cron');
-const { checkAndNotifyDueLoans } = require('./routes/notifications');
+const notificationRouter = require('./routes/notifications');
+const checkAndNotifyDueLoans = notificationRouter.checkAndNotifyDueLoans;
 
 // Import models for interest calculation
 const Loan = require('./models/Loan');

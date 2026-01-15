@@ -1,4 +1,4 @@
-const express = require('express');
+﻿const express = require('express');
 const webpush = require('web-push');
 const Customer = require('../models/Customer');
 const Loan = require('../models/Loan');
@@ -6,7 +6,7 @@ const PushSubscription = require('../models/PushSubscription');
 
 const router = express.Router();
 
-// VAPID Keys - ต้องตั้งค่าใน Render Environment Variables
+// VAPID Keys - à¸•à¹‰à¸­à¸‡à¸•à¸±à¹‰à¸‡à¸„à¹ˆà¸²à¹ƒà¸™ Render Environment Variables
 const VAPID_PUBLIC_KEY = process.env.VAPID_PUBLIC_KEY || 'BLBx-hf2WrL2qEa0qKb-aCJbcxEvyn62GDYwW2UpxsRpmMYGE0fRHC1cUumPJXR7d6eLt1N73-6OYqAIa7g0rF4';
 const VAPID_PRIVATE_KEY = process.env.VAPID_PRIVATE_KEY || 'FvJxy9rQ_7SbKdN5YhfRIeZ8tPKJqR-2gLnCvB_0xjk';
 
@@ -195,8 +195,8 @@ async function checkAndNotifyDueLoans() {
       const interestRate = customer ? customer.interest_rate : 0;
       
       await sendPushToAllSubscribers(
-        '📢 มีเงินกู้ครบกำหนด!',
-        `👤 ${customer ? customer.name : 'ไม่ระบุ'}\n📱 ${customer ? customer.phone : '-'}\n💰 ดอกเบี้ย: ${interestRate}% | ยอด: ${balanceFormatted} บาท\n📅 วันนัด: ${customer ? customer.appointment_date : '-'}`,
+        'ðŸ“¢ à¸¡à¸µà¹€à¸‡à¸´à¸™à¸à¸¹à¹‰à¸„à¸£à¸šà¸à¸³à¸«à¸™à¸”!',
+        `ðŸ‘¤ ${customer ? customer.name : 'à¹„à¸¡à¹ˆà¸£à¸°à¸šà¸¸'}\nðŸ“± ${customer ? customer.phone : '-'}\nðŸ’° à¸”à¸­à¸à¹€à¸šà¸µà¹‰à¸¢: ${interestRate}% | à¸¢à¸­à¸”: ${balanceFormatted} à¸šà¸²à¸—\nðŸ“… à¸§à¸±à¸™à¸™à¸±à¸”: ${customer ? customer.appointment_date : '-'}`,
         { type: 'due', customer_id: loan.customer_id }
       );
     }
@@ -216,8 +216,8 @@ async function checkAndNotifyDueLoans() {
       const interestRate = customer ? customer.interest_rate : 0;
       
       await sendPushToAllSubscribers(
-        '📅 เงินกู้ใกล้ครบกำหนด',
-        `👤 ${customer ? customer.name : 'ไม่ระบุ'}\n📱 ${customer ? customer.phone : '-'}\n💰 ดอกเบี้ย: ${interestRate}% | ยอด: ${balanceFormatted} บาท\n📅 วันนัด: ${customer ? customer.appointment_date : '-'}`,
+        'ðŸ“… à¹€à¸‡à¸´à¸™à¸à¸¹à¹‰à¹ƒà¸à¸¥à¹‰à¸„à¸£à¸šà¸à¸³à¸«à¸™à¸”',
+        `ðŸ‘¤ ${customer ? customer.name : 'à¹„à¸¡à¹ˆà¸£à¸°à¸šà¸¸'}\nðŸ“± ${customer ? customer.phone : '-'}\nðŸ’° à¸”à¸­à¸à¹€à¸šà¸µà¹‰à¸¢: ${interestRate}% | à¸¢à¸­à¸”: ${balanceFormatted} à¸šà¸²à¸—\nðŸ“… à¸§à¸±à¸™à¸™à¸±à¸”: ${customer ? customer.appointment_date : '-'}`,
         { type: 'upcoming', customer_id: loan.customer_id }
       );
     }
@@ -243,8 +243,8 @@ router.post('/checkDueLoans', async (req, res) => {
 router.post('/sendTestPush', async (req, res) => {
   try {
     const result = await sendPushToAllSubscribers(
-      '🔔 ทดสอบการแจ้งเตือน',
-      'ระบบแจ้งเตือนทำงานปกติ!',
+      'ðŸ”” à¸—à¸”à¸ªà¸­à¸šà¸à¸²à¸£à¹à¸ˆà¹‰à¸‡à¹€à¸•à¸·à¸­à¸™',
+      'à¸£à¸°à¸šà¸šà¹à¸ˆà¹‰à¸‡à¹€à¸•à¸·à¸­à¸™à¸—à¸³à¸‡à¸²à¸™à¸›à¸à¸•à¸´!',
       { type: 'test' }
     );
     res.json({ success: true, ...result });
@@ -267,6 +267,9 @@ router.post('/getNotificationStatus', async (req, res) => {
   }
 });
 
+// Export router and functions separately
+router.checkAndNotifyDueLoans = checkAndNotifyDueLoans;
+router.sendPushToAllSubscribers = sendPushToAllSubscribers;
+
 module.exports = router;
-module.exports.checkAndNotifyDueLoans = checkAndNotifyDueLoans;
-module.exports.sendPushToAllSubscribers = sendPushToAllSubscribers;
+
