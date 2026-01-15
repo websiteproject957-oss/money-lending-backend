@@ -16,12 +16,12 @@ const loanSchema = new mongoose.Schema(
     // เงินต้นเริ่มต้น (ไม่เปลี่ยน)
     original_principal: {
       type: Number,
-      required: true
+      default: 0
     },
     // เงินต้นคงเหลือ (ลดลงเมื่อจ่ายเกินดอก)
     principal: {
       type: Number,
-      required: true
+      default: 0
     },
     // ดอกเบี้ยค้างสะสม
     outstanding_interest: {
@@ -31,12 +31,12 @@ const loanSchema = new mongoose.Schema(
     // ยอดรวมทั้งหมด (เงินต้น + ดอกค้าง) - ใช้คิดดอกทบต้น
     current_balance: {
       type: Number,
-      required: true
+      default: 0
     },
     // วันเริ่มกู้
     start_date: {
       type: String,
-      required: true
+      default: ''
     },
     // วันที่คิดดอกครั้งล่าสุด
     last_interest_date: {
