@@ -22,13 +22,28 @@ router.post('/getVapidPublicKey', async (req, res) => {
   res.json({ publicKey: VAPID_PUBLIC_KEY });
 });
 
-// Get notifications (appointments)
+// Get notifications (appointments) with loan details
 router.post('/getNotifications', async (req, res) => {
   try {
     const today = new Date();
     const customers = await Customer.find({
       appointment_date: { $ne: '' }
     }).lean();
+
+    // Get all loans for these customers
+    const customerIds = customers.map(c => c.customer_id);
+    const loans = await Loan.find({ 
+      customer_id: { $in: customerIds },
+      status: 'active'
+    }).lean();
+
+    // Create a map of customer_id to their active loan
+    const loanMap = {};
+    loans.forEach(loan => {
+      if (!loanMap[loan.customer_id]) {
+        loanMap[loan.customer_id] = loan;
+      }
+    });
 
     const notifications = customers
       .map(customer => {
@@ -40,13 +55,22 @@ router.post('/getNotifications', async (req, res) => {
           let priority = 'low';
           if (daysUntil === 0) priority = 'high';
           else if (daysUntil === 1) priority = 'medium';
+          
+          // Get loan info for this customer
+          const loan = loanMap[customer.customer_id];
+          
           return {
             customer_id: customer.customer_id,
             customer_name: customer.name,
+            phone: customer.phone || '',
             appointment_date: customer.appointment_date,
             days_until: daysUntil,
             priority: priority,
-            reminder_time: customer.reminder_time
+            reminder_time: customer.reminder_time,
+            // Loan details
+            interest_rate: loan ? loan.interest_rate : 0,
+            current_balance: loan ? loan.current_balance : 0,
+            loan_amount: loan ? loan.loan_amount : 0
           };
         }
         return null;
