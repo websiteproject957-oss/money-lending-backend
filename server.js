@@ -6,6 +6,7 @@ const customerRoutes = require('./routes/customers');
 const loanRoutes = require('./routes/loans');
 const paymentRoutes = require('./routes/payments');
 const notificationRoutes = require('./routes/notifications');
+const { stopScheduler } = require('./scheduler');
 
 const app = express();
 
@@ -52,4 +53,12 @@ app.post('/', async (req, res) => {
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
+  console.log('Notification scheduler initialized');
+});
+
+// Graceful shutdown
+process.on('SIGTERM', () => {
+  console.log('SIGTERM signal received: closing HTTP server');
+  stopScheduler();
+  process.exit(0);
 });
