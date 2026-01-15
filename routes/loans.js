@@ -114,4 +114,62 @@ router.post('/deleteLoan', async (req, res) => {
   }
 });
 
-module.exports = router;
+// Migrate old loans to new structure
+router.post('/migrateLoans', async (req, res) => {
+  try {
+    const loans = await Loan.find();
+    let migrated = 0;
+    
+    for (const loan of loans) {
+      let needsSave = false;
+      
+      // เพิ่ม original_principal ถ้ายังไม่มี
+      if (!loan.original_principal) {
+        loan.original_principal = loan.principal || loan.current_balance || 0;
+        needsSave = true;
+      }
+      
+      // เพิ่ม principal ถ้ายังไม่มี
+      if (loan.principal === undefined || loan.principal === null) {
+        loan.principal = loan.current_balance || loan.original_principal || 0;
+        needsSave = true;
+      }
+      
+      // เพิ่ม outstanding_interest ถ้ายังไม่มี
+      if (loan.outstanding_interest === undefined || loan.outstanding_interest === null) {
+        loan.outstanding_interest = 0;
+        needsSave = true;
+      }
+      
+      // เพิ่ม status ถ้ายังไม่มี
+      if (!loan.status) {
+        loan.status = loan.current_balance > 0 ? 'active' : 'paid';
+        needsSave = true;
+      }
+      
+      // เพิ่ม next_payment_date ถ้ายังไม่มี
+      if (!loan.next_payment_date && loan.start_date) {
+        const startDate = new Date(loan.start_date);
+        const nextDate = new Date(startDate);
+        nextDate.setMonth(nextDate.getMonth() + 1);
+        loan.next_payment_date = nextDate.toISOString().split('T')[0];
+        needsSave = true;
+      }
+      
+      if (needsSave) {
+        await loan.save();
+        migrated++;
+      }
+    }
+    
+    res.json({ 
+      success: true, 
+      message: `Migrated ${migrated} loans`,
+      total: loans.length,
+      migrated: migrated
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
