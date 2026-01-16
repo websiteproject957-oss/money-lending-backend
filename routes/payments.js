@@ -20,17 +20,44 @@ async function updateCustomerTotalBalance(customerId) {
   return totalBalance;
 }
 
+// Helper: คำนวณดอกเบี้ยต่อเดือน (ไม่ทบต้น - คิดจากเงินต้นเดิม)
+function calculateMonthlyInterestAmount(principal, interestRate) {
+  return principal * (interestRate / 100);
+}
+
 // Get all payments
 router.post('/getPayments', async (req, res) => {
   try {
-    const payments = await Payment.find().lean();
+    const payments = await Payment.find().sort({ created_at: -1 }).lean();
     res.json(payments);
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
 });
 
-// Add payment - ตัดดอกก่อน แล้วค่อยตัดต้น
+// Get payments for specific loan
+router.post('/getPaymentsByLoan', async (req, res) => {
+  try {
+    const { loan_id } = req.body;
+    const payments = await Payment.find({ loan_id }).sort({ created_at: -1 }).lean();
+    res.json(payments);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Get payments for specific customer
+router.post('/getPaymentsByCustomer', async (req, res) => {
+  try {
+    const { customer_id } = req.body;
+    const payments = await Payment.find({ customer_id }).sort({ created_at: -1 }).lean();
+    res.json(payments);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Add payment - แยกจ่ายดอกและจ่ายต้น
 router.post('/addPayment', async (req, res) => {
   try {
     const { data } = req.body;
@@ -44,42 +71,35 @@ router.post('/addPayment', async (req, res) => {
 
     // Get customer for interest rate
     const customer = await Customer.findOne({ customer_id: loan.customer_id });
-    const interestRate = customer ? (customer.interest_rate / 100) : 0;
+    const interestRate = customer ? customer.interest_rate : 0;
+    const monthlyInterest = calculateMonthlyInterestAmount(loan.original_principal || loan.principal, interestRate);
 
-    const payAmount = parseFloat(data.pay_amount);
-    let interestPaid = 0;
-    let principalPaid = 0;
-    let remainingPayment = payAmount;
+    const interestPaid = parseFloat(data.interest_paid || 0);
+    const principalPaid = parseFloat(data.principal_paid || 0);
+    const totalPaid = interestPaid + principalPaid;
 
-    // ขั้นตอนที่ 1: ตัดดอกค้างก่อน
-    if (loan.outstanding_interest > 0) {
-      if (remainingPayment >= loan.outstanding_interest) {
-        interestPaid = loan.outstanding_interest;
-        remainingPayment -= loan.outstanding_interest;
-        loan.outstanding_interest = 0;
-      } else {
-        interestPaid = remainingPayment;
-        loan.outstanding_interest -= remainingPayment;
-        remainingPayment = 0;
+    // จ่ายดอก - ลดดอกค้างและเพิ่มเดือนที่จ่ายแล้ว
+    if (interestPaid > 0) {
+      loan.outstanding_interest = Math.max(0, (loan.outstanding_interest || 0) - interestPaid);
+      loan.total_interest_paid = (loan.total_interest_paid || 0) + interestPaid;
+      loan.last_interest_payment_date = data.payment_date;
+      
+      // คำนวณว่าจ่ายดอกครบกี่เดือนแล้ว
+      if (monthlyInterest > 0) {
+        loan.interest_paid_until_month = Math.floor(loan.total_interest_paid / monthlyInterest);
       }
     }
 
-    // ขั้นตอนที่ 2: ตัดเงินต้น (ถ้าเหลือ)
-    if (remainingPayment > 0 && loan.principal > 0) {
-      if (remainingPayment >= loan.principal) {
-        principalPaid = loan.principal;
-        loan.principal = 0;
-      } else {
-        principalPaid = remainingPayment;
-        loan.principal -= remainingPayment;
-      }
+    // จ่ายต้น - ลดเงินต้นคงเหลือ
+    if (principalPaid > 0) {
+      loan.principal = Math.max(0, loan.principal - principalPaid);
     }
 
-    // อัพเดตยอดรวมของ loan
-    loan.current_balance = loan.principal + loan.outstanding_interest;
+    // อัพเดตยอดรวม (ไม่ทบต้น: เงินต้น + ดอกค้าง)
+    loan.current_balance = loan.principal + (loan.outstanding_interest || 0);
 
-    // ถ้าหมดหนี้ให้เปลี่ยนสถานะ
-    if (loan.current_balance <= 0) {
+    // ถ้าหมดหนี้
+    if (loan.principal <= 0 && loan.outstanding_interest <= 0) {
       loan.status = 'paid';
       loan.current_balance = 0;
     }
@@ -95,13 +115,15 @@ router.post('/addPayment', async (req, res) => {
       loan_id: data.loan_id,
       customer_id: loan.customer_id,
       payment_date: data.payment_date,
-      pay_amount: payAmount,
       interest_paid: interestPaid,
       principal_paid: principalPaid,
-      slip_url: data.slip_url || '',
+      pay_amount: totalPaid,
+      for_interest_month: loan.interest_paid_until_month,
       balance_after: loan.current_balance,
       principal_after: loan.principal,
-      outstanding_interest_after: loan.outstanding_interest
+      outstanding_interest_after: loan.outstanding_interest || 0,
+      note: data.note || '',
+      slip_url: data.slip_url || ''
     });
 
     await payment.save();
@@ -116,7 +138,7 @@ router.post('/addPayment', async (req, res) => {
     }
     summary.profit = (summary.profit || 0) + interestPaid;
     summary.total_principal = (summary.total_principal || 0) + principalPaid;
-    summary.total_received = (summary.total_received || 0) + payAmount;
+    summary.total_received = (summary.total_received || 0) + totalPaid;
     await summary.save();
 
     res.json({
@@ -125,8 +147,49 @@ router.post('/addPayment', async (req, res) => {
       principal_paid: principalPaid,
       remaining_balance: loan.current_balance,
       remaining_principal: loan.principal,
-      remaining_interest: loan.outstanding_interest,
+      remaining_interest: loan.outstanding_interest || 0,
+      interest_paid_until_month: loan.interest_paid_until_month,
       customer_total_balance: newTotalBalance
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Get loan status with interest info
+router.post('/getLoanStatus', async (req, res) => {
+  try {
+    const { loan_id } = req.body;
+    const loan = await Loan.findOne({ loan_id }).lean();
+    if (!loan) {
+      return res.status(404).json({ error: 'Loan not found' });
+    }
+
+    const customer = await Customer.findOne({ customer_id: loan.customer_id });
+    const interestRate = customer ? customer.interest_rate : 0;
+    const monthlyInterest = calculateMonthlyInterestAmount(loan.original_principal || loan.principal, interestRate);
+
+    // คำนวณจำนวนเดือนตั้งแต่เริ่มกู้
+    const startDate = new Date(loan.start_date);
+    const today = new Date();
+    const totalMonths = (today.getFullYear() - startDate.getFullYear()) * 12 + 
+                        (today.getMonth() - startDate.getMonth());
+
+    // ดอกที่ต้องจ่ายทั้งหมด vs ดอกที่จ่ายแล้ว
+    const totalInterestDue = monthlyInterest * totalMonths;
+    const interestPaidUntilMonth = loan.interest_paid_until_month || 0;
+    const monthsOwedInterest = Math.max(0, totalMonths - interestPaidUntilMonth);
+
+    res.json({
+      ...loan,
+      interest_rate: interestRate,
+      monthly_interest: monthlyInterest,
+      total_months: totalMonths,
+      interest_paid_until_month: interestPaidUntilMonth,
+      months_owed_interest: monthsOwedInterest,
+      total_interest_due: totalInterestDue,
+      total_interest_paid: loan.total_interest_paid || 0,
+      outstanding_interest: loan.outstanding_interest || 0
     });
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -154,22 +217,26 @@ router.post('/recalculateAllBalances', async (req, res) => {
   }
 });
 
-// คำนวณดอกเบี้ยรายเดือน
-async function calculateMonthlyInterest(loan, customer) {
-  const interestRate = customer ? (customer.interest_rate / 100) : 0;
-  const interestAmount = loan.current_balance * interestRate;
+// คำนวณดอกเบี้ยรายเดือน (ไม่ทบต้น - คิดจากเงินต้นเดิม)
+async function generateMonthlyInterest(loan, customer) {
+  const interestRate = customer ? customer.interest_rate : 0;
+  // คิดดอกจากเงินต้นเดิม (ไม่ทบต้น)
+  const originalPrincipal = loan.original_principal || loan.principal;
+  const interestAmount = originalPrincipal * (interestRate / 100);
 
-  loan.outstanding_interest += interestAmount;
+  // เพิ่มดอกค้าง
+  loan.outstanding_interest = (loan.outstanding_interest || 0) + interestAmount;
   loan.current_balance = loan.principal + loan.outstanding_interest;
   loan.last_interest_date = new Date().toISOString().split('T')[0];
 
+  // ตั้งวันครบกำหนดถัดไป
   const nextDate = new Date();
   nextDate.setMonth(nextDate.getMonth() + 1);
   loan.next_payment_date = nextDate.toISOString().split('T')[0];
 
   await loan.save();
 
-  // อัพเดต customer total balance ด้วย
+  // อัพเดต customer total balance
   await updateCustomerTotalBalance(loan.customer_id);
 
   return interestAmount;
@@ -207,10 +274,10 @@ router.post('/calculateAllInterest', async (req, res) => {
       }
 
       if (shouldCalculate) {
-        const interest = await calculateMonthlyInterest(loan, customer);
+        const interest = await generateMonthlyInterest(loan, customer);
         totalInterest += interest;
         processed++;
-        console.log('Calculated interest for loan ' + loan.loan_id + ': ' + interest);
+        console.log('Generated interest for loan ' + loan.loan_id + ': ' + interest);
       }
     }
 
@@ -231,9 +298,14 @@ router.post('/getLoanDetails', async (req, res) => {
 
     const customer = await Customer.findOne({ customer_id: loan.customer_id });
     const interestRate = customer ? customer.interest_rate : 0;
-    const nextInterest = loan.current_balance * (interestRate / 100);
+    const monthlyInterest = calculateMonthlyInterestAmount(loan.original_principal || loan.principal, interestRate);
 
-    res.json({ ...loan, interest_rate: interestRate, next_interest_amount: nextInterest });
+    res.json({ 
+      ...loan, 
+      interest_rate: interestRate, 
+      monthly_interest: monthlyInterest,
+      interest_paid_until_month: loan.interest_paid_until_month || 0
+    });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }

@@ -22,16 +22,23 @@ const paymentSchema = new mongoose.Schema(
       type: String,
       required: true
     },
-    pay_amount: {
-      type: Number,
-      required: true
-    },
-    // รายละเอียดการตัดยอด
+    // ยอดจ่ายดอก
     interest_paid: {
       type: Number,
       default: 0
     },
+    // ยอดจ่ายต้น
     principal_paid: {
+      type: Number,
+      default: 0
+    },
+    // ยอดรวมที่จ่าย
+    pay_amount: {
+      type: Number,
+      default: 0
+    },
+    // จ่ายดอกสำหรับเดือนที่
+    for_interest_month: {
       type: Number,
       default: 0
     },
@@ -47,6 +54,11 @@ const paymentSchema = new mongoose.Schema(
     outstanding_interest_after: {
       type: Number,
       default: 0
+    },
+    // หมายเหตุ
+    note: {
+      type: String,
+      default: ''
     },
     slip_url: {
       type: String,

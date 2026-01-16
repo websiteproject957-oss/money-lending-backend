@@ -18,17 +18,32 @@ const loanSchema = new mongoose.Schema(
       type: Number,
       default: 0
     },
-    // เงินต้นคงเหลือ (ลดลงเมื่อจ่ายเกินดอก)
+    // เงินต้นคงเหลือ
     principal: {
       type: Number,
       default: 0
     },
-    // ดอกเบี้ยค้างสะสม
+    // ดอกเบี้ยค้างสะสม (ที่ยังไม่ได้จ่าย)
     outstanding_interest: {
       type: Number,
       default: 0
     },
-    // ยอดรวมทั้งหมด (เงินต้น + ดอกค้าง) - ใช้คิดดอกทบต้น
+    // ดอกเบี้ยรวมที่จ่ายไปแล้ว
+    total_interest_paid: {
+      type: Number,
+      default: 0
+    },
+    // จ่ายดอกถึงเดือนที่ (นับจากวันเริ่มกู้)
+    interest_paid_until_month: {
+      type: Number,
+      default: 0
+    },
+    // วันที่จ่ายดอกล่าสุด
+    last_interest_payment_date: {
+      type: String,
+      default: ''
+    },
+    // ยอดรวมทั้งหมด (เงินต้น + ดอกค้าง)
     current_balance: {
       type: Number,
       default: 0
