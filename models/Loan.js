@@ -23,6 +23,11 @@ const loanSchema = new mongoose.Schema(
       type: Number,
       default: 0
     },
+    // ดอกเบี้ย/เดือน (กำหนดเองได้)
+    monthly_interest_amount: {
+      type: Number,
+      default: 0
+    },
     // ดอกเบี้ยค้างสะสม (ที่ยังไม่ได้จ่าย)
     outstanding_interest: {
       type: Number,

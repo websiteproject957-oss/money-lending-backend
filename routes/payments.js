@@ -20,11 +20,6 @@ async function updateCustomerTotalBalance(customerId) {
   return totalBalance;
 }
 
-// Helper: คำนวณดอกเบี้ยต่อเดือน (ไม่ทบต้น - คิดจากเงินต้นเดิม)
-function calculateMonthlyInterestAmount(principal, interestRate) {
-  return principal * (interestRate / 100);
-}
-
 // Get all payments
 router.post('/getPayments', async (req, res) => {
   try {
@@ -69,10 +64,8 @@ router.post('/addPayment', async (req, res) => {
       return res.status(404).json({ error: 'Loan not found' });
     }
 
-    // Get customer for interest rate
-    const customer = await Customer.findOne({ customer_id: loan.customer_id });
-    const interestRate = customer ? customer.interest_rate : 0;
-    const monthlyInterest = calculateMonthlyInterestAmount(loan.original_principal || loan.principal, interestRate);
+    // ใช้ monthly_interest_amount จาก loan โดยตรง (กำหนดเองได้)
+    const monthlyInterest = loan.monthly_interest_amount || 0;
 
     const interestPaid = parseFloat(data.interest_paid || 0);
     const principalPaid = parseFloat(data.principal_paid || 0);
@@ -165,9 +158,8 @@ router.post('/getLoanStatus', async (req, res) => {
       return res.status(404).json({ error: 'Loan not found' });
     }
 
-    const customer = await Customer.findOne({ customer_id: loan.customer_id });
-    const interestRate = customer ? customer.interest_rate : 0;
-    const monthlyInterest = calculateMonthlyInterestAmount(loan.original_principal || loan.principal, interestRate);
+    // ใช้ monthly_interest_amount จาก loan โดยตรง
+    const monthlyInterest = loan.monthly_interest_amount || 0;
 
     // คำนวณจำนวนเดือนตั้งแต่เริ่มกู้
     const startDate = new Date(loan.start_date);
@@ -182,7 +174,6 @@ router.post('/getLoanStatus', async (req, res) => {
 
     res.json({
       ...loan,
-      interest_rate: interestRate,
       monthly_interest: monthlyInterest,
       total_months: totalMonths,
       interest_paid_until_month: interestPaidUntilMonth,
@@ -217,12 +208,10 @@ router.post('/recalculateAllBalances', async (req, res) => {
   }
 });
 
-// คำนวณดอกเบี้ยรายเดือน (ไม่ทบต้น - คิดจากเงินต้นเดิม)
-async function generateMonthlyInterest(loan, customer) {
-  const interestRate = customer ? customer.interest_rate : 0;
-  // คิดดอกจากเงินต้นเดิม (ไม่ทบต้น)
-  const originalPrincipal = loan.original_principal || loan.principal;
-  const interestAmount = originalPrincipal * (interestRate / 100);
+// คำนวณดอกเบี้ยรายเดือน (ใช้ monthly_interest_amount จาก loan)
+async function generateMonthlyInterest(loan) {
+  // ใช้ดอกเบี้ยต่อเดือนที่กำหนดไว้ใน loan
+  const interestAmount = loan.monthly_interest_amount || 0;
 
   // เพิ่มดอกค้าง
   loan.outstanding_interest = (loan.outstanding_interest || 0) + interestAmount;
@@ -253,7 +242,6 @@ router.post('/calculateAllInterest', async (req, res) => {
 
     for (const loanData of loans) {
       const loan = await Loan.findOne({ loan_id: loanData.loan_id });
-      const customer = await Customer.findOne({ customer_id: loan.customer_id });
 
       let shouldCalculate = false;
 
@@ -274,7 +262,7 @@ router.post('/calculateAllInterest', async (req, res) => {
       }
 
       if (shouldCalculate) {
-        const interest = await generateMonthlyInterest(loan, customer);
+        const interest = await generateMonthlyInterest(loan);
         totalInterest += interest;
         processed++;
         console.log('Generated interest for loan ' + loan.loan_id + ': ' + interest);
@@ -282,30 +270,6 @@ router.post('/calculateAllInterest', async (req, res) => {
     }
 
     res.json({ success: true, processed: processed, total_interest_generated: totalInterest });
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
-});
-
-// API: ดูรายละเอียด loan
-router.post('/getLoanDetails', async (req, res) => {
-  try {
-    const { loan_id } = req.body;
-    const loan = await Loan.findOne({ loan_id }).lean();
-    if (!loan) {
-      return res.status(404).json({ error: 'Loan not found' });
-    }
-
-    const customer = await Customer.findOne({ customer_id: loan.customer_id });
-    const interestRate = customer ? customer.interest_rate : 0;
-    const monthlyInterest = calculateMonthlyInterestAmount(loan.original_principal || loan.principal, interestRate);
-
-    res.json({ 
-      ...loan, 
-      interest_rate: interestRate, 
-      monthly_interest: monthlyInterest,
-      interest_paid_until_month: loan.interest_paid_until_month || 0
-    });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
